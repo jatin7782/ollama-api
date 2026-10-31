@@ -1,41 +1,49 @@
 import os
+
 import httpx
 
-from fastapi import FastAPI, Depends
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
-from .auth import verify_api_key
-
-app = FastAPI(
-    title="My Ollama API",
-    version="1.0.0"
-)
 
 OLLAMA_URL = os.getenv(
     "OLLAMA_URL",
     "http://127.0.0.1:11434"
 )
 
-DEFAULT_MODEL = os.getenv(
+MODEL = os.getenv(
     "OLLAMA_MODEL",
     "qwen2.5-coder:1.5b"
 )
 
+app = FastAPI(
+    title="My Ollama AI API",
+    version="1.0.0"
+)
+
+# For a simple demo. In production, restrict this to your
+# exact GitHub Pages origin.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 class ChatRequest(BaseModel):
-    model: str | None = None
-    messages: list
-    stream: bool = False
-    temperature: float | None = None
-    max_tokens: int | None = None
+    message: str
+    history: list[dict] = Field(default_factory=list)
 
 
 @app.get("/")
 async def root():
     return {
-        "name": "My Ollama API",
-        "status": "online"
+        "status": "online",
+        "model": MODEL,
+        "service": "Ollama AI API"
     }
 
 
@@ -49,7 +57,8 @@ async def health():
 
         return {
             "status": "ok",
-            "ollama": response.status_code == 200
+            "ollama": response.status_code == 200,
+            "model": MODEL
         }
 
     except Exception as e:
@@ -60,65 +69,62 @@ async def health():
         }
 
 
-@app.get("/v1/models")
-async def models(
-    _: bool = Depends(verify_api_key)
-):
-    async with httpx.AsyncClient() as client:
+@app.post("/chat")
+async def chat(request: ChatRequest):
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a helpful AI assistant. "
+                "Give clear and accurate answers."
+            )
+        }
+    ]
 
-        response = await client.get(
-            f"{OLLAMA_URL}/v1/models"
-        )
+    for item in request.history:
+        role = item.get("role")
+        content = item.get("content")
 
-    return response.json()
+        if role in ["user", "assistant"] and isinstance(content, str):
+            messages.append({
+                "role": role,
+                "content": content
+            })
 
-
-@app.post("/v1/chat/completions")
-async def chat(
-    request: ChatRequest,
-    _: bool = Depends(verify_api_key)
-):
-
-    model = request.model or DEFAULT_MODEL
+    messages.append({
+        "role": "user",
+        "content": request.message
+    })
 
     payload = {
-        "model": model,
-        "messages": request.messages,
-        "stream": request.stream
+        "model": MODEL,
+        "messages": messages,
+        "stream": False,
+        "options": {
+            "temperature": 0.7
+        }
     }
 
-    if request.temperature is not None:
-        payload["temperature"] = request.temperature
+    try:
+        async with httpx.AsyncClient(timeout=300) as client:
+            response = await client.post(
+                f"{OLLAMA_URL}/api/chat",
+                json=payload
+            )
 
-    if request.max_tokens is not None:
-        payload["max_tokens"] = request.max_tokens
+        response.raise_for_status()
+        data = response.json()
 
-    if request.stream:
+        answer = data.get("message", {}).get("content", "")
 
-        async def generate():
+        return {
+            "success": True,
+            "model": MODEL,
+            "answer": answer
+        }
 
-            async with httpx.AsyncClient() as client:
-
-                async with client.stream(
-                    "POST",
-                    f"{OLLAMA_URL}/v1/chat/completions",
-                    json=payload,
-                    timeout=None
-                ) as response:
-
-                    async for chunk in response.aiter_bytes():
-                        yield chunk
-
-        return StreamingResponse(
-            generate(),
-            media_type="text/event-stream"
-        )
-
-    async with httpx.AsyncClient(timeout=None) as client:
-
-        response = await client.post(
-            f"{OLLAMA_URL}/v1/chat/completions",
-            json=payload
-        )
-
-    return response.json()
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My AI</title>
+  <meta name="description" content="AI assistant powered by Ollama">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="logo">My<span>AI</span></div>
+    <div id="status" class="status">Checking...</div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>Ask <span>My AI</span></h1>
+      <p>Powered by Ollama and <strong>qwen2.5-coder:1.5b</strong></p>
+    </section>
+
+    <section class="chat-container">
+      <div id="messages" class="messages">
+        <div class="welcome">
+          <div class="robot">AI</div>
+          <h2>How can I help?</h2>
+          <p>Ask me anything.</p>
+        </div>
+      </div>
+
+      <form id="chatForm" class="input-area">
+        <textarea id="messageInput" placeholder="Ask something..." rows="1" autocomplete="off"></textarea>
+        <button id="sendButton" type="submit">Send</button>
+      </form>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
